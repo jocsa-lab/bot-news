@@ -16,9 +16,8 @@ export const config = {
   deepseekApiKey: required('DEEPSEEK_API_KEY'),
   anthropicApiKey: required('ANTHROPIC_API_KEY'),
 
-  // Google Sheets
-  googleSheetsId: required('GOOGLE_SHEETS_ID'),
-  googleServiceAccountJson: required('GOOGLE_SERVICE_ACCOUNT_JSON'),
+  // MongoDB
+  mongodbUri: required('MONGODB_URI'),
 
   // Meta / Instagram
   metaAppId: required('META_APP_ID'),

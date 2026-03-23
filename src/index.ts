@@ -1,7 +1,7 @@
 import * as http from 'http';
 import { config } from './utils/config';
 import { TelegramCallbackData, ConsolidationResult } from './types';
-import { getRowByIndex, updateFinalStatus } from './clients/sheets';
+import { getRowById, updateFinalStatus } from './clients/mongodb';
 import { notifyTelegramText } from './services/notification.service';
 import { generatePostImage, generateCarouselImages } from './services/image.service';
 import { publishToInstagram, publishCarousel, refreshMetaToken } from './services/instagram.service';
@@ -12,24 +12,21 @@ const PORT = parseInt(process.env.PORT || '8080', 10);
 
 // --- Orchestrator: post-approval flow ---
 
-export async function onApproval(sheetRow: number): Promise<void> {
+export async function onApproval(contentId: string): Promise<void> {
   try {
-    // 1. Read consolidated data from Sheets
-    const row = await getRowByIndex(sheetRow);
-    if (!row || !row.consolidatedJson) {
-      throw new Error(`Row ${sheetRow} not found or has no consolidated data`);
+    const doc = await getRowById(contentId);
+    if (!doc || !doc.consolidatedJson) {
+      throw new Error(`Content ${contentId} not found or has no consolidated data`);
     }
 
-    const consolidated: ConsolidationResult = JSON.parse(row.consolidatedJson);
+    const consolidated: ConsolidationResult = JSON.parse(doc.consolidatedJson);
 
-    // 2. Generate carousel images
     const images = await generateCarouselImages({
       titulo: consolidated.titulo_post,
       topicos: consolidated.topicos,
       hashtags: consolidated.hashtags,
     });
 
-    // 3. Publish to Instagram
     let postId: string;
     if (images.length === 1) {
       const result = await publishToInstagram({
@@ -47,23 +44,19 @@ export async function onApproval(sheetRow: number): Promise<void> {
       postId = result.postId;
     }
 
-    // 4. Update Sheets: mark as published
-    await updateFinalStatus(sheetRow, 'publicado', postId);
+    await updateFinalStatus(contentId, 'publicado', postId);
 
-    // 5. Notify success
     await notifyTelegramText(
-      `✅ <b>Publicado com sucesso!</b>\n📊 Linha: #${sheetRow}\n📱 Post ID: ${postId}`,
+      `✅ <b>Publicado com sucesso!</b>\n📱 Post ID: ${postId}`,
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error(`onApproval failed for row ${sheetRow}:`, msg);
+    console.error(`onApproval failed for ${contentId}:`, msg);
 
-    // Update Sheets with error status
-    await updateFinalStatus(sheetRow, 'erro_publicacao').catch(console.error);
+    await updateFinalStatus(contentId, 'erro_publicacao').catch(console.error);
 
-    // Notify error on Telegram
     await notifyTelegramText(
-      `❌ <b>Erro ao publicar</b>\n📊 Linha: #${sheetRow}\n🐛 ${msg}`,
+      `❌ <b>Erro ao publicar</b>\n🐛 ${msg}`,
     ).catch(console.error);
 
     throw error;
@@ -158,13 +151,12 @@ async function handleTelegramWebhook(body: string): Promise<{ status: number; bo
     );
 
     if (callbackData.action === 'approve') {
-      await updateFinalStatus(callbackData.sheetRow, 'pronto');
-      await notifyTelegramText(`⏳ Processando publicação da linha #${callbackData.sheetRow}...`);
-      // Run approval flow async to not block the webhook response
-      onApproval(callbackData.sheetRow).catch(console.error);
+      await updateFinalStatus(callbackData.contentId, 'pronto');
+      await notifyTelegramText(`⏳ Processando publicação...`);
+      onApproval(callbackData.contentId).catch(console.error);
     } else if (callbackData.action === 'reject') {
-      await updateFinalStatus(callbackData.sheetRow, 'rejeitado');
-      await notifyTelegramText(`🚫 Conteúdo da linha #${callbackData.sheetRow} rejeitado.`);
+      await updateFinalStatus(callbackData.contentId, 'rejeitado');
+      await notifyTelegramText(`🚫 Conteúdo rejeitado.`);
     }
 
     return { status: 200, body: 'ok' };

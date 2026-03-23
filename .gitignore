@@ -22,6 +22,7 @@ __pycache__/
 # === Local config ===
 .codex/
 .mcp.json
+.md-instrucoes/
 *.zip
 
 # === IDE / OS ===

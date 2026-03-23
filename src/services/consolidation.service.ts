@@ -1,10 +1,10 @@
 import { consolidate } from '../clients/gemini';
-import { getRowsByStatus, updateConsolidation } from '../clients/sheets';
+import { getRowsByStatus, updateConsolidation, ContentDocument } from '../clients/mongodb';
 import {
   buildConsolidationPrompt,
   buildCorrectionPrompt,
 } from '../prompts/prompt-02-consolidacao';
-import { ConsolidationResult, SheetRow } from '../types';
+import { ConsolidationResult } from '../types';
 
 export function validateConsolidation(
   result: ConsolidationResult,
@@ -44,29 +44,25 @@ export function parseConsolidationJson(raw: string): ConsolidationResult {
 }
 
 export async function consolidateRow(
-  row: SheetRow,
+  doc: ContentDocument,
 ): Promise<ConsolidationResult> {
-  const prompt = buildConsolidationPrompt(
-    row.geminiJson,
-    row.deepseekJson,
-    row.claudeJson,
-    row.topic,
-  );
+  const geminiJson = typeof doc.gemini === 'string' ? doc.gemini : JSON.stringify(doc.gemini);
+  const deepseekJson = typeof doc.deepseek === 'string' ? doc.deepseek : JSON.stringify(doc.deepseek);
+  const claudeJson = typeof doc.claude === 'string' ? doc.claude : JSON.stringify(doc.claude);
+
+  const prompt = buildConsolidationPrompt(geminiJson, deepseekJson, claudeJson, doc.topic);
 
   let raw: string;
   try {
     raw = await consolidate(prompt);
   } catch {
-    // Fallback: try DeepSeek if Gemini Flash fails
     const { generate } = await import('../clients/deepseek');
-    const fallbackPrompt = prompt;
-    const res = await generate(fallbackPrompt);
+    const res = await generate(prompt);
     raw = JSON.stringify(res);
   }
 
   let result = parseConsolidationJson(raw);
 
-  // Validate and attempt one correction if needed
   const issues = validateConsolidation(result);
   if (issues.length > 0) {
     const correctionPrompt = buildCorrectionPrompt(JSON.stringify(result), issues);
@@ -82,12 +78,12 @@ export async function consolidateRow(
 }
 
 export async function consolidateContent(): Promise<number> {
-  const rows = await getRowsByStatus('gerado');
+  const docs = await getRowsByStatus('gerado');
   let processed = 0;
 
-  for (const row of rows) {
-    const result = await consolidateRow(row);
-    await updateConsolidation(row.rowIndex, JSON.stringify(result));
+  for (const doc of docs) {
+    const result = await consolidateRow(doc);
+    await updateConsolidation(doc._id!.toHexString(), JSON.stringify(result));
     processed++;
   }
 

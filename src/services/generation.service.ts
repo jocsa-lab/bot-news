@@ -1,7 +1,7 @@
 import * as geminiClient from '../clients/gemini';
 import * as deepseekClient from '../clients/deepseek';
 import * as claudeClient from '../clients/claude';
-import { appendGenerationRow } from '../clients/sheets';
+import { appendGenerationRow } from '../clients/mongodb';
 import { buildGenerationPrompt } from '../prompts/prompt-01-geracao';
 import { GenerationResult, LLMResponse, SourceResult } from '../types';
 
@@ -41,18 +41,16 @@ export async function generateFromAllSources(topic: string): Promise<GenerationR
   ).length;
 
   if (successCount === 0) {
-    console.error('[generation] All 3 sources failed — skipping Sheets, notifying Telegram');
-    // Telegram notification will be handled by a later prompt
+    console.error('[generation] All 3 sources failed — skipping DB, notifying Telegram');
     return result;
   }
 
   if (successCount === 1) {
-    console.error('[generation] Only 1 of 3 sources succeeded — flagging in Sheets');
+    console.error('[generation] Only 1 of 3 sources succeeded — flagging in DB');
   } else if (successCount === 2) {
     console.warn('[generation] 1 of 3 sources failed — continuing with 2');
   }
 
-  // Log individual failures
   for (const r of [result.gemini, result.deepseek, result.claude]) {
     if (!r.success) {
       console.warn(`[generation] ${r.source} failed: ${r.error}`);
@@ -60,10 +58,10 @@ export async function generateFromAllSources(topic: string): Promise<GenerationR
   }
 
   try {
-    await appendGenerationRow(topic, result);
-    console.log('[generation] Results saved to Google Sheets');
+    const id = await appendGenerationRow(topic, result);
+    console.log(`[generation] Results saved to MongoDB (id: ${id})`);
   } catch (err) {
-    console.error('[generation] Failed to save to Sheets:', err);
+    console.error('[generation] Failed to save to MongoDB:', err);
   }
 
   return result;

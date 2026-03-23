@@ -6,11 +6,9 @@ export async function notifyTelegram(data: {
   topic: string;
   titulo: string;
   resumo: string;
-  sheetRow: number;
+  contentId: string;
   contradictions: boolean;
 }): Promise<void> {
-  const sheetsUrl = `https://docs.google.com/spreadsheets/d/${config.googleSheetsId}/edit#gid=0&range=A${data.sheetRow}`;
-
   const message = [
     '📋 <b>Novo conteúdo gerado</b>',
     `📌 Tema: ${escapeHtml(data.topic)}`,
@@ -19,17 +17,13 @@ export async function notifyTelegram(data: {
     `${escapeHtml(data.resumo.slice(0, 300))}...`,
     '',
     `⚠️ Contradições: ${data.contradictions ? 'sim' : 'não'}`,
-    `📊 Linha: #${data.sheetRow}`,
   ].join('\n');
 
   const inlineKeyboard = {
     inline_keyboard: [
       [
-        { text: '✅ Aprovar', callback_data: JSON.stringify({ action: 'approve', sheetRow: data.sheetRow }) },
-        { text: '❌ Rejeitar', callback_data: JSON.stringify({ action: 'reject', sheetRow: data.sheetRow }) },
-      ],
-      [
-        { text: '✏️ Editar no Sheets', url: sheetsUrl },
+        { text: '✅ Aprovar', callback_data: JSON.stringify({ action: 'approve', contentId: data.contentId }) },
+        { text: '❌ Rejeitar', callback_data: JSON.stringify({ action: 'reject', contentId: data.contentId }) },
       ],
     ],
   };

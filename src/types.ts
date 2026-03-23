@@ -41,21 +41,9 @@ export interface ConsolidationResult {
   contradicoes_encontradas: boolean;
 }
 
-export interface SheetRow {
-  rowIndex: number;
-  timestamp: string;
-  topic: string;
-  geminiJson: string;
-  deepseekJson: string;
-  claudeJson: string;
-  status: string;
-  consolidatedJson?: string;
-  finalStatus?: string;
-}
-
 export interface TelegramCallbackData {
   action: 'approve' | 'reject';
-  sheetRow: number;
+  contentId: string;
 }
 
 export interface CarouselSlide {
