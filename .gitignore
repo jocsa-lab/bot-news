@@ -23,6 +23,9 @@ __pycache__/
 .codex/
 .mcp.json
 .md-instrucoes/
+.dashboard-credentials.json
+dashboard/node_modules/
+dashboard/dist/
 *.zip
 
 # === IDE / OS ===

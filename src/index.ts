@@ -1,15 +1,49 @@
 import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 import { config } from './utils/config';
 import { TelegramCallbackData, ConsolidationResult } from './types';
 import { getRowById, updateFinalStatus, getRecentContents } from './clients/mongodb';
-import { DASHBOARD_HTML } from './dashboard';
 import { notifyTelegramText } from './services/notification.service';
 import { generatePostImage, generateCarouselImages } from './services/image.service';
 import { publishToInstagram, publishCarousel, refreshMetaToken } from './services/instagram.service';
 import { generateFromAllSources } from './services/generation.service';
 import { consolidateContent } from './services/consolidation.service';
+import { checkAuth, sendUnauthorized } from './middleware/auth';
+import { checkRateLimit, sendRateLimited } from './middleware/rate-limit';
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
+
+// Resolve dashboard static files directory
+const DASHBOARD_DIR = path.resolve(__dirname, '..', 'dashboard', 'dist');
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+};
+
+function serveStatic(res: http.ServerResponse, filePath: string): boolean {
+  try {
+    const resolved = path.resolve(DASHBOARD_DIR, filePath);
+    if (!resolved.startsWith(DASHBOARD_DIR)) {
+      return false; // path traversal protection
+    }
+    if (!fs.existsSync(resolved)) return false;
+    const ext = path.extname(resolved);
+    const mime = MIME_TYPES[ext] || 'application/octet-stream';
+    const content = fs.readFileSync(resolved);
+    res.writeHead(200, { 'Content-Type': mime });
+    res.end(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // --- Orchestrator: post-approval flow ---
 
@@ -71,7 +105,6 @@ async function handleGenerate(): Promise<{ status: number; body: string }> {
     const topic = 'tecnologia e inovação';
     console.log(`[generate] Starting generation for topic: ${topic}`);
 
-    // Step 1: Generate from all LLM sources
     const result = await generateFromAllSources(topic);
     const successCount = [result.gemini, result.deepseek, result.claude].filter(
       (r) => r.success,
@@ -82,11 +115,9 @@ async function handleGenerate(): Promise<{ status: number; body: string }> {
       return { status: 500, body: JSON.stringify({ error: 'All LLM sources failed' }) };
     }
 
-    // Step 2: Consolidate generated content
     const consolidated = await consolidateContent();
     console.log(`[generate] Consolidated ${consolidated} rows`);
 
-    // Step 3: Notify via Telegram for approval
     await notifyTelegramText(
       `📰 <b>Conteúdo gerado!</b>\n🤖 Fontes: ${successCount}/3\n📝 Consolidados: ${consolidated}\nAguardando aprovação no Telegram.`,
     );
@@ -141,7 +172,6 @@ async function handleTelegramWebhook(body: string): Promise<{ status: number; bo
 
     const callbackData: TelegramCallbackData = JSON.parse(update.callback_query.data);
 
-    // Answer callback to remove loading state in Telegram
     await fetch(
       `https://api.telegram.org/bot${config.telegramBotToken}/answerCallbackQuery`,
       {
@@ -163,16 +193,24 @@ async function handleTelegramWebhook(body: string): Promise<{ status: number; bo
     return { status: 200, body: 'ok' };
   } catch (error) {
     console.error('Telegram webhook error:', error);
-    return { status: 200, body: 'ok' }; // Always 200 to avoid Telegram retries
+    return { status: 200, body: 'ok' };
   }
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = req.url ?? '';
+  const rawUrl = req.url ?? '';
   const method = req.method ?? '';
 
+  // Rate limiting on all requests
+  if (!checkRateLimit(req)) {
+    sendRateLimited(res);
+    return;
+  }
+
+  // --- Public routes (no auth) ---
+
   // POST /generate — triggered by Cloud Scheduler
-  if (method === 'POST' && url === '/generate') {
+  if (method === 'POST' && rawUrl === '/generate') {
     const result = await handleGenerate();
     res.writeHead(result.status, { 'Content-Type': 'application/json' });
     res.end(result.body);
@@ -180,7 +218,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // POST /refresh-token — triggered by Cloud Scheduler monthly
-  if (method === 'POST' && url === '/refresh-token') {
+  if (method === 'POST' && rawUrl === '/refresh-token') {
     const result = await handleRefreshToken();
     res.writeHead(result.status, { 'Content-Type': 'application/json' });
     res.end(result.body);
@@ -188,7 +226,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // POST /webhook/telegram — Telegram bot callbacks
-  if (method === 'POST' && url === '/webhook/telegram') {
+  if (method === 'POST' && rawUrl === '/webhook/telegram') {
     const body = await parseBody(req);
     const result = await handleTelegramWebhook(body);
     res.writeHead(result.status, { 'Content-Type': 'text/plain' });
@@ -196,24 +234,52 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // GET /dashboard — web dashboard
-  if (method === 'GET' && (url === '/dashboard' || url === '/')) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(DASHBOARD_HTML);
+  // GET /health — health check
+  if (method === 'GET' && rawUrl === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+    return;
+  }
+
+  // --- Protected routes (auth required) ---
+
+  // Dashboard and API routes require auth
+  if (rawUrl.startsWith('/dashboard') || rawUrl.startsWith('/api/') || rawUrl === '/') {
+    if (!checkAuth(req)) {
+      sendUnauthorized(res);
+      return;
+    }
+  }
+
+  // GET / — redirect to dashboard
+  if (method === 'GET' && rawUrl === '/') {
+    res.writeHead(302, { Location: '/dashboard/' });
+    res.end();
+    return;
+  }
+
+  // GET /dashboard/* — serve React SPA
+  if (method === 'GET' && rawUrl.startsWith('/dashboard')) {
+    const filePath = rawUrl.replace('/dashboard', '').replace(/^\//, '') || 'index.html';
+    if (serveStatic(res, filePath)) return;
+    // SPA fallback: serve index.html for client-side routing
+    if (serveStatic(res, 'index.html')) return;
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Dashboard not found');
     return;
   }
 
   // GET /api/contents — list recent contents
-  if (method === 'GET' && url.startsWith('/api/contents')) {
+  if (method === 'GET' && rawUrl.startsWith('/api/contents') && !rawUrl.includes('/delete')) {
     try {
-      const parsed = new URL(url, 'http://localhost');
+      const parsed = new URL(rawUrl, 'http://localhost');
       const limit = parseInt(parsed.searchParams.get('limit') || '50', 10);
       const includeDeleted = parsed.searchParams.get('includeDeleted') === 'true';
       const docs = await getRecentContents(limit, includeDeleted);
       const serialized = docs.map(d => ({ ...d, _id: d._id?.toHexString() }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(serialized));
-    } catch (err) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to fetch contents' }));
     }
@@ -221,23 +287,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   // PATCH /api/contents/:id/delete — soft-delete
-  const deleteMatch = url.match(/^\/api\/contents\/([a-f0-9]{24})\/delete$/);
+  const deleteMatch = rawUrl.match(/^\/api\/contents\/([a-f0-9]{24})\/delete$/);
   if (method === 'PATCH' && deleteMatch) {
     try {
       await updateFinalStatus(deleteMatch[1], 'apagado');
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));
-    } catch (err) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to delete' }));
     }
-    return;
-  }
-
-  // GET /health — health check
-  if (method === 'GET' && url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
     return;
   }
 

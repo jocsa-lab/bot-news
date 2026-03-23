@@ -1,3 +1,10 @@
+FROM node:20-slim AS dashboard-build
+WORKDIR /dashboard
+COPY dashboard/package*.json ./
+RUN npm ci
+COPY dashboard/ ./
+RUN npx vite build
+
 FROM node:20-slim
 
 # Puppeteer / Chromium dependencies
@@ -20,6 +27,7 @@ RUN npm ci --omit=dev
 
 COPY dist/ ./dist/
 COPY src/templates/ ./dist/templates/
+COPY --from=dashboard-build /dashboard/dist/ ./dashboard/dist/
 
 EXPOSE 8080
 

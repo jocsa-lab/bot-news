@@ -13,6 +13,8 @@ locals {
     INSTAGRAM_ACCOUNT_ID        = "instagram-account-id"
     TELEGRAM_BOT_TOKEN          = "telegram-bot-token"
     TELEGRAM_CHAT_ID            = "telegram-chat-id"
+    DASHBOARD_USER              = "dashboard-user"
+    DASHBOARD_PASS              = "dashboard-pass"
   }
 }
 

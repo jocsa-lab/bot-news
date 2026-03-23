@@ -114,6 +114,8 @@ jobs:
             "instagram-account-id:${{ secrets.INSTAGRAM_ACCOUNT_ID }}"
             "telegram-bot-token:${{ secrets.TELEGRAM_BOT_TOKEN }}"
             "telegram-chat-id:${{ secrets.TELEGRAM_CHAT_ID }}"
+            "dashboard-user:${{ secrets.DASHBOARD_USER }}"
+            "dashboard-pass:${{ secrets.DASHBOARD_PASS }}"
           )
           for entry in "${secrets[@]}"; do
             name="${entry%%:*}"

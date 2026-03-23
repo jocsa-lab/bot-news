@@ -33,6 +33,10 @@ export const config = {
   gcpProjectId: required('GCP_PROJECT_ID'),
   gcpRegion: optional('GCP_REGION', 'southamerica-east1'),
 
+  // Dashboard auth
+  dashboardUser: optional('DASHBOARD_USER', 'admin'),
+  dashboardPass: optional('DASHBOARD_PASS', ''),
+
   // Scheduling
   schedulerTimezone: optional('SCHEDULER_TIMEZONE', 'America/Sao_Paulo'),
   morningSchedule: optional('MORNING_SCHEDULE', '0 8 * * *'),

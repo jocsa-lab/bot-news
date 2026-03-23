@@ -10,6 +10,8 @@ locals {
     "instagram-account-id",
     "telegram-bot-token",
     "telegram-chat-id",
+    "dashboard-user",
+    "dashboard-pass",
   ]
 }
 
