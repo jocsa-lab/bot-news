@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1080, height=1080">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 1080px;
+      height: 1080px;
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(160deg, #0f0f23 0%, #1a1a3e 50%, #0d1b2a 100%);
+      color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 60px;
+    }
+
+    /* Header */
+    .header {
+      margin-bottom: 40px;
+    }
+
+    .titulo {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1.2;
+      color: #ffffff;
+      text-shadow: 0 2px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .header-line {
+      width: 80px;
+      height: 4px;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      border-radius: 2px;
+      margin-top: 16px;
+    }
+
+    /* Topics */
+    .topicos {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      justify-content: center;
+    }
+
+    .topico {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 20px 24px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .topico-emoji {
+      font-size: 28px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .topico-text strong {
+      font-size: 18px;
+      font-weight: 700;
+      color: #e0e0ff;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .topico-text p {
+      font-size: 15px;
+      font-weight: 400;
+      color: #b0b0cc;
+      line-height: 1.5;
+    }
+
+    /* Hashtags */
+    .hashtags {
+      margin-top: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .hashtag {
+      font-size: 13px;
+      font-weight: 600;
+      color: #8b5cf6;
+      background: rgba(139, 92, 246, 0.12);
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+
+    /* Footer / Watermark */
+    .footer {
+      margin-top: auto;
+      padding-top: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .watermark {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.25);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Carousel slide variants */
+    .slide-cover {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .slide-cover .titulo {
+      font-size: 52px;
+      margin-bottom: 24px;
+    }
+
+    .subtitle {
+      font-size: 20px;
+      color: #8b5cf6;
+      font-weight: 600;
+    }
+
+    .slide-topic {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .slide-emoji {
+      font-size: 64px;
+      margin-bottom: 24px;
+    }
+
+    .slide-titulo {
+      font-size: 32px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 20px;
+    }
+
+    .slide-conteudo {
+      font-size: 20px;
+      color: #c0c0dd;
+      line-height: 1.6;
+      max-width: 800px;
+    }
+
+    .slide-closing {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .slide-closing h2 {
+      font-size: 40px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 20px;
+    }
+
+    .closing-cta {
+      font-size: 22px;
+      color: #8b5cf6;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="titulo">{{TITULO}}</h1>
+      <div class="header-line"></div>
+    </div>
+
+    <div class="topicos">
+      {{TOPICOS}}
+    </div>
+
+    <div class="hashtags">
+      {{HASHTAGS}}
+    </div>
+
+    <div class="footer">
+      <span class="watermark">bot-news • gerado por IA</span>
+    </div>
+  </div>
+</body>
+</html>

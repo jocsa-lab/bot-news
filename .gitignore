@@ -1,0 +1,35 @@
+# === Node.js / TypeScript ===
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+# === Prompt Runner ===
+.venv/
+__pycache__/
+*.pyc
+.prompt-runner/
+
+# === Terraform ===
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# === Local config ===
+.codex/
+.mcp.json
+*.zip
+
+# === IDE / OS ===
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# === GCP ===
+.gcloudignore

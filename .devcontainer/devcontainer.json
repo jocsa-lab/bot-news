@@ -1,0 +1,58 @@
+// === BASE ===
+{
+  "name": "content-pipeline",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "remoteUser": "node",
+  "remoteEnv": {
+    "PATH": "/home/node/.local/bin:${containerEnv:PATH}",
+    // === BASE === Telegram notifications for prompt-runner (set on host)
+    "TELEGRAM_BOT_TOKEN": "${localEnv:TELEGRAM_BOT_TOKEN}",
+    "TELEGRAM_CHAT_ID": "${localEnv:TELEGRAM_CHAT_ID}"
+  },
+
+  // === BASE === Features
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  // === PROJECT: content-pipeline === Forward Cloud Run local port
+  "forwardPorts": [8080, 1455],
+  "portsAttributes": {
+    "8080": {
+      "label": "Cloud Run Local",
+      "onAutoForward": "notify"
+    },
+    "1455": {
+      "label": "Codex Login",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      // === BASE === Editor settings
+      "settings": {
+        "editor.formatOnSave": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true
+      },
+      "extensions": [
+        // === BASE === Extensions
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        // === PROJECT: content-pipeline === Extensions
+        "hashicorp.terraform",
+        "Prisma.prisma"
+      ]
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}

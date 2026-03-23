@@ -1,0 +1,125 @@
+name: Deploy ContentPipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GCP_REGION: ${{ vars.GCP_REGION || 'southamerica-east1' }}
+  SCHEDULER_TIMEZONE: ${{ vars.SCHEDULER_TIMEZONE || 'America/Sao_Paulo' }}
+  MORNING_SCHEDULE: ${{ vars.MORNING_SCHEDULE || '0 8 * * *' }}
+  EVENING_SCHEDULE: ${{ vars.EVENING_SCHEDULE || '0 18 * * *' }}
+  IMAGE_NAME: content-pipeline
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  deploy:
+    name: Deploy to GCP
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Option A: Workload Identity Federation (preferred)
+      - name: Authenticate to GCP (Workload Identity)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      # Option B: Service Account Key (fallback — uncomment and comment Option A)
+      # - name: Authenticate to GCP (SA Key)
+      #   id: auth
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install and build
+        run: npm ci && npm run build
+
+      - name: Build Docker image
+        run: |
+          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/content-pipeline/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          IMAGE_LATEST="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/content-pipeline/${{ env.IMAGE_NAME }}:latest"
+          docker build -t "${IMAGE}" -t "${IMAGE_LATEST}" .
+          echo "IMAGE=${IMAGE}" >> $GITHUB_ENV
+          echo "IMAGE_LATEST=${IMAGE_LATEST}" >> $GITHUB_ENV
+
+      - name: Push Docker image
+        run: |
+          docker push "${{ env.IMAGE }}"
+          docker push "${{ env.IMAGE_LATEST }}"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.9'
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          terraform plan -out=tfplan \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=${{ env.GCP_REGION }}" \
+            -var="scheduler_timezone=${{ env.SCHEDULER_TIMEZONE }}" \
+            -var="morning_schedule=${{ env.MORNING_SCHEDULE }}" \
+            -var="evening_schedule=${{ env.EVENING_SCHEDULE }}" \
+            -var="docker_image=${{ env.IMAGE }}"
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Verify deployment
+        run: |
+          URL=$(gcloud run services describe content-pipeline \
+            --region=${{ env.GCP_REGION }} \
+            --format='value(status.url)')
+          echo "Service URL: ${URL}"
+          curl -sf "${URL}/health" || echo "Health check pending (cold start)"
