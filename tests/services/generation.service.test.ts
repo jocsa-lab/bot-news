@@ -18,8 +18,8 @@ vi.mock('../../src/clients/claude', () => ({
   generate: vi.fn().mockResolvedValue(MOCK_DATA),
 }));
 
-vi.mock('../../src/clients/sheets', () => ({
-  appendGenerationRow: vi.fn().mockResolvedValue(undefined),
+vi.mock('../../src/clients/mongodb', () => ({
+  appendGenerationRow: vi.fn().mockResolvedValue('abc123'),
 }));
 
 vi.mock('../../src/utils/config', () => ({

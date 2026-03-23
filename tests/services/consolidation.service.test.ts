@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ConsolidationResult, SheetRow } from '../../src/types';
+import { ConsolidationResult } from '../../src/types';
+import { ContentDocument } from '../../src/clients/mongodb';
+import { ObjectId } from 'mongodb';
 
 vi.mock('../../src/utils/config', () => ({
   config: { geminiApiKey: 'test-key', deepseekApiKey: 'test-key' },
@@ -10,7 +12,7 @@ vi.mock('../../src/clients/gemini', () => ({
   generate: vi.fn(),
 }));
 
-vi.mock('../../src/clients/sheets', () => ({
+vi.mock('../../src/clients/mongodb', () => ({
   getRowsByStatus: vi.fn(),
   updateConsolidation: vi.fn(),
   appendGenerationRow: vi.fn(),
@@ -31,13 +33,14 @@ const VALID_CONSOLIDATION: ConsolidationResult = {
   contradicoes_encontradas: false,
 };
 
-const MOCK_ROW: SheetRow = {
-  rowIndex: 2,
+const MOCK_DOC: ContentDocument = {
+  _id: new ObjectId('507f1f77bcf86cd799439011'),
+  date: '2026-03-22',
   timestamp: '2026-03-22T10:00:00Z',
   topic: 'IA em 2026',
-  geminiJson: '{"pontos":[]}',
-  deepseekJson: '{"pontos":[]}',
-  claudeJson: '{"pontos":[]}',
+  gemini: { pontos: [] },
+  deepseek: { pontos: [] },
+  claude: { pontos: [] },
   status: 'gerado',
 };
 
@@ -126,7 +129,7 @@ describe('consolidation.service', () => {
       const { consolidateRow } = await import(
         '../../src/services/consolidation.service'
       );
-      const result = await consolidateRow(MOCK_ROW);
+      const result = await consolidateRow(MOCK_DOC);
 
       expect(result.titulo_post).toBe(VALID_CONSOLIDATION.titulo_post);
       expect(result.topicos).toHaveLength(3);
@@ -149,7 +152,7 @@ describe('consolidation.service', () => {
       const { consolidateRow } = await import(
         '../../src/services/consolidation.service'
       );
-      const result = await consolidateRow(MOCK_ROW);
+      const result = await consolidateRow(MOCK_DOC);
 
       expect(consolidate).toHaveBeenCalledTimes(2);
       expect(result.total_caracteres).toBe(950);

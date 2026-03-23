@@ -101,6 +101,28 @@ jobs:
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
 
+      - name: Populate Secret Manager values
+        run: |
+          secrets=(
+            "gemini-api-key:${{ secrets.GEMINI_API_KEY }}"
+            "deepseek-api-key:${{ secrets.DEEPSEEK_API_KEY }}"
+            "anthropic-api-key:${{ secrets.ANTHROPIC_API_KEY }}"
+            "mongodb-uri:${{ secrets.MONGODB_URI }}"
+            "meta-app-id:${{ secrets.META_APP_ID }}"
+            "meta-app-secret:${{ secrets.META_APP_SECRET }}"
+            "meta-access-token:${{ secrets.META_ACCESS_TOKEN }}"
+            "instagram-account-id:${{ secrets.INSTAGRAM_ACCOUNT_ID }}"
+            "telegram-bot-token:${{ secrets.TELEGRAM_BOT_TOKEN }}"
+            "telegram-chat-id:${{ secrets.TELEGRAM_CHAT_ID }}"
+          )
+          for entry in "${secrets[@]}"; do
+            name="${entry%%:*}"
+            value="${entry#*:}"
+            if [ -n "$value" ] && [ "$value" != "" ]; then
+              printf '%s' "$value" | gcloud secrets versions add "$name" --data-file=- --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null || true
+            fi
+          done
+
       - name: Terraform Plan
         working-directory: terraform
         run: |

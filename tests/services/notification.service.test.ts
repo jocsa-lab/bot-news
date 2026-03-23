@@ -4,7 +4,6 @@ vi.mock('../../src/utils/config', () => ({
   config: {
     telegramBotToken: 'test-bot-token',
     telegramChatId: '123456',
-    googleSheetsId: 'sheet-id-123',
   },
 }));
 
@@ -26,7 +25,7 @@ describe('notification.service', () => {
         topic: 'AI News',
         titulo: 'OpenAI lança novo modelo',
         resumo: 'O OpenAI anunciou hoje o lançamento de um novo modelo de linguagem.',
-        sheetRow: 5,
+        contentId: 'abc123',
         contradictions: false,
       });
 
@@ -41,19 +40,16 @@ describe('notification.service', () => {
       expect(body.text).toContain('AI News');
       expect(body.text).toContain('OpenAI lança novo modelo');
       expect(body.text).toContain('Contradições: não');
-      expect(body.text).toContain('Linha: #5');
 
-      // Check inline keyboard
       const keyboard = body.reply_markup.inline_keyboard;
-      expect(keyboard).toHaveLength(2);
+      expect(keyboard).toHaveLength(1);
       expect(keyboard[0]).toHaveLength(2); // Approve + Reject
-      expect(keyboard[1]).toHaveLength(1); // Edit link
 
       const approveData = JSON.parse(keyboard[0][0].callback_data);
-      expect(approveData).toEqual({ action: 'approve', sheetRow: 5 });
+      expect(approveData).toEqual({ action: 'approve', contentId: 'abc123' });
 
       const rejectData = JSON.parse(keyboard[0][1].callback_data);
-      expect(rejectData).toEqual({ action: 'reject', sheetRow: 5 });
+      expect(rejectData).toEqual({ action: 'reject', contentId: 'abc123' });
     });
 
     it('shows contradictions when present', async () => {
@@ -63,7 +59,7 @@ describe('notification.service', () => {
         topic: 'Tech',
         titulo: 'Título',
         resumo: 'Resumo',
-        sheetRow: 3,
+        contentId: 'xyz789',
         contradictions: true,
       });
 
@@ -79,12 +75,11 @@ describe('notification.service', () => {
         topic: 'Tech',
         titulo: 'T',
         resumo: longResumo,
-        sheetRow: 1,
+        contentId: 'id1',
         contradictions: false,
       });
 
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      // Should contain 300 A's + "..."
       expect(body.text).toContain('A'.repeat(300) + '...');
       expect(body.text).not.toContain('A'.repeat(301));
     });
@@ -96,7 +91,7 @@ describe('notification.service', () => {
         topic: '<script>alert("xss")</script>',
         titulo: 'Test & <b>bold</b>',
         resumo: 'Text with <tags>',
-        sheetRow: 1,
+        contentId: 'id2',
         contradictions: false,
       });
 
@@ -117,7 +112,7 @@ describe('notification.service', () => {
           topic: 'T',
           titulo: 'T',
           resumo: 'R',
-          sheetRow: 1,
+          contentId: 'id3',
           contradictions: false,
         }),
       ).rejects.toThrow('Telegram sendMessage failed (403)');

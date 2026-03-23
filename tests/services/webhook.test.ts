@@ -4,7 +4,6 @@ vi.mock('../../src/utils/config', () => ({
   config: {
     telegramBotToken: 'test-bot-token',
     telegramChatId: '123456',
-    googleSheetsId: 'sheet-id',
     gcpProjectId: 'test-project',
     instagramAccountId: 'ig-123',
     metaAccessToken: 'meta-token',
@@ -13,8 +12,8 @@ vi.mock('../../src/utils/config', () => ({
   },
 }));
 
-vi.mock('../../src/clients/sheets', () => ({
-  getRowByIndex: vi.fn(),
+vi.mock('../../src/clients/mongodb', () => ({
+  getRowById: vi.fn(),
   updateFinalStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -35,7 +34,7 @@ const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 global.fetch = fetchMock as any;
 
 import { onApproval } from '../../src/index';
-import { getRowByIndex, updateFinalStatus } from '../../src/clients/sheets';
+import { getRowById, updateFinalStatus } from '../../src/clients/mongodb';
 import { notifyTelegramText } from '../../src/services/notification.service';
 import { generateCarouselImages } from '../../src/services/image.service';
 
@@ -44,14 +43,15 @@ describe('onApproval orchestrator', () => {
     vi.clearAllMocks();
   });
 
-  it('reads row, generates images, publishes, and updates status', async () => {
-    const mockRow = {
-      rowIndex: 5,
+  it('reads doc, generates images, publishes, and updates status', async () => {
+    const mockDoc = {
+      _id: 'abc123',
+      date: '2024-01-01',
       timestamp: '2024-01-01T00:00:00Z',
       topic: 'AI News',
-      geminiJson: '{}',
-      deepseekJson: '{}',
-      claudeJson: '{}',
+      gemini: {},
+      deepseek: {},
+      claude: {},
       status: 'consolidado',
       consolidatedJson: JSON.stringify({
         titulo_post: 'Tech Update',
@@ -66,34 +66,41 @@ describe('onApproval orchestrator', () => {
       finalStatus: 'pronto',
     };
 
-    (getRowByIndex as any).mockResolvedValue(mockRow);
+    (getRowById as any).mockResolvedValue(mockDoc);
 
-    await onApproval(5);
+    await onApproval('abc123');
 
-    expect(getRowByIndex).toHaveBeenCalledWith(5);
+    expect(getRowById).toHaveBeenCalledWith('abc123');
     expect(generateCarouselImages).toHaveBeenCalledWith(
       expect.objectContaining({ titulo: 'Tech Update' }),
     );
-    expect(updateFinalStatus).toHaveBeenCalledWith(5, 'publicado', expect.any(String));
+    expect(updateFinalStatus).toHaveBeenCalledWith('abc123', 'publicado', expect.any(String));
     expect(notifyTelegramText).toHaveBeenCalledWith(
       expect.stringContaining('Publicado com sucesso'),
     );
   });
 
-  it('handles missing row gracefully', async () => {
-    (getRowByIndex as any).mockResolvedValue(null);
+  it('handles missing doc gracefully', async () => {
+    (getRowById as any).mockResolvedValue(null);
 
-    await expect(onApproval(99)).rejects.toThrow('not found');
+    await expect(onApproval('missing-id')).rejects.toThrow('not found');
 
-    expect(updateFinalStatus).toHaveBeenCalledWith(99, 'erro_publicacao');
+    expect(updateFinalStatus).toHaveBeenCalledWith('missing-id', 'erro_publicacao');
     expect(notifyTelegramText).toHaveBeenCalledWith(
       expect.stringContaining('Erro ao publicar'),
     );
   });
 
   it('handles publication error and notifies', async () => {
-    const mockRow = {
-      rowIndex: 3,
+    const mockDoc = {
+      _id: 'err-id',
+      date: '2024-01-01',
+      timestamp: '2024-01-01T00:00:00Z',
+      topic: 'Tech',
+      gemini: {},
+      deepseek: {},
+      claude: {},
+      status: 'consolidado',
       consolidatedJson: JSON.stringify({
         titulo_post: 'T',
         texto_final: 'Text',
@@ -106,12 +113,12 @@ describe('onApproval orchestrator', () => {
       }),
     };
 
-    (getRowByIndex as any).mockResolvedValue(mockRow);
+    (getRowById as any).mockResolvedValue(mockDoc);
     (generateCarouselImages as any).mockRejectedValue(new Error('Puppeteer crash'));
 
-    await expect(onApproval(3)).rejects.toThrow('Puppeteer crash');
+    await expect(onApproval('err-id')).rejects.toThrow('Puppeteer crash');
 
-    expect(updateFinalStatus).toHaveBeenCalledWith(3, 'erro_publicacao');
+    expect(updateFinalStatus).toHaveBeenCalledWith('err-id', 'erro_publicacao');
     expect(notifyTelegramText).toHaveBeenCalledWith(
       expect.stringContaining('Puppeteer crash'),
     );
