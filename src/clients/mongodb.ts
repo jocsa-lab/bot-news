@@ -101,6 +101,17 @@ export async function getContentsByDate(date: string): Promise<ContentDocument[]
     .toArray();
 }
 
+export async function getRecentContents(limit = 50, includeDeleted = false): Promise<ContentDocument[]> {
+  const database = await getDb();
+  const filter = includeDeleted ? {} : { status: { $ne: 'apagado' } };
+  return database
+    .collection<ContentDocument>('contents')
+    .find(filter)
+    .sort({ timestamp: -1 })
+    .limit(limit)
+    .toArray();
+}
+
 export async function closeConnection(): Promise<void> {
   if (client) {
     await client.close();

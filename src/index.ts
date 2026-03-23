@@ -1,7 +1,8 @@
 import * as http from 'http';
 import { config } from './utils/config';
 import { TelegramCallbackData, ConsolidationResult } from './types';
-import { getRowById, updateFinalStatus } from './clients/mongodb';
+import { getRowById, updateFinalStatus, getRecentContents } from './clients/mongodb';
+import { DASHBOARD_HTML } from './dashboard';
 import { notifyTelegramText } from './services/notification.service';
 import { generatePostImage, generateCarouselImages } from './services/image.service';
 import { publishToInstagram, publishCarousel, refreshMetaToken } from './services/instagram.service';
@@ -192,6 +193,44 @@ const server = http.createServer(async (req, res) => {
     const result = await handleTelegramWebhook(body);
     res.writeHead(result.status, { 'Content-Type': 'text/plain' });
     res.end(result.body);
+    return;
+  }
+
+  // GET /dashboard — web dashboard
+  if (method === 'GET' && (url === '/dashboard' || url === '/')) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(DASHBOARD_HTML);
+    return;
+  }
+
+  // GET /api/contents — list recent contents
+  if (method === 'GET' && url.startsWith('/api/contents')) {
+    try {
+      const parsed = new URL(url, 'http://localhost');
+      const limit = parseInt(parsed.searchParams.get('limit') || '50', 10);
+      const includeDeleted = parsed.searchParams.get('includeDeleted') === 'true';
+      const docs = await getRecentContents(limit, includeDeleted);
+      const serialized = docs.map(d => ({ ...d, _id: d._id?.toHexString() }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(serialized));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch contents' }));
+    }
+    return;
+  }
+
+  // PATCH /api/contents/:id/delete — soft-delete
+  const deleteMatch = url.match(/^\/api\/contents\/([a-f0-9]{24})\/delete$/);
+  if (method === 'PATCH' && deleteMatch) {
+    try {
+      await updateFinalStatus(deleteMatch[1], 'apagado');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to delete' }));
+    }
     return;
   }
 
