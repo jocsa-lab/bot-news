@@ -1,0 +1,30 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: botuser
+      MONGO_INITDB_ROOT_PASSWORD: botpass
+    volumes:
+      - mongo_data:/data/db
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: mongodb://botuser:botpass@mongo:27017/bot-news?authSource=admin
+      PORT: "8080"
+    depends_on:
+      - mongo
+    volumes:
+      - ./src:/app/src
+      - ./dashboard/dist:/app/dashboard/dist
+
+volumes:
+  mongo_data:
