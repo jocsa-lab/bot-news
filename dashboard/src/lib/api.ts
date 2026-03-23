@@ -18,12 +18,21 @@ function headers(): HeadersInit {
   return token ? { Authorization: `Basic ${token}` } : {};
 }
 
+async function extractError(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = await res.json();
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function fetchContents(limit = 100, includeDeleted = false): Promise<ContentDoc[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (includeDeleted) params.set('includeDeleted', 'true');
   const res = await fetch(`/api/contents?${params}`, { headers: headers() });
   if (res.status === 401) throw new Error('unauthorized');
-  if (!res.ok) throw new Error('Erro ao carregar');
+  if (!res.ok) throw new Error(await extractError(res, 'Erro ao carregar'));
   return res.json();
 }
 
@@ -33,21 +42,39 @@ export async function deleteContent(id: string): Promise<void> {
     headers: headers(),
   });
   if (res.status === 401) throw new Error('unauthorized');
-  if (!res.ok) throw new Error('Erro ao apagar');
+  if (!res.ok) throw new Error(await extractError(res, 'Erro ao apagar'));
 }
 
-export async function generateContent(topic: string, range: string): Promise<{ success: boolean; sources: number; consolidated: number }> {
+export interface GenerateResult {
+  success: boolean;
+  sources: number;
+  consolidated: number;
+  failures?: Array<{ source: string; error: string }>;
+  consolidationError?: string;
+}
+
+export interface GenerateError {
+  error: string;
+  failures?: Array<{ source: string; error: string }>;
+}
+
+export async function generateContent(topic: string, range: string): Promise<GenerateResult> {
   const res = await fetch('/api/generate', {
     method: 'POST',
     headers: { ...headers(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, range }),
   });
   if (res.status === 401) throw new Error('unauthorized');
+  const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
   if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-    throw new Error(data.error || 'Erro ao gerar conteudo');
+    const err = data as GenerateError;
+    const parts = [err.error || 'Erro ao gerar'];
+    if (err.failures?.length) {
+      parts.push(...err.failures.map((f) => `${f.source}: ${f.error}`));
+    }
+    throw new Error(parts.join('\n'));
   }
-  return res.json();
+  return data as GenerateResult;
 }
 
 export async function approveContent(id: string): Promise<void> {
@@ -56,7 +83,7 @@ export async function approveContent(id: string): Promise<void> {
     headers: headers(),
   });
   if (res.status === 401) throw new Error('unauthorized');
-  if (!res.ok) throw new Error('Erro ao aprovar');
+  if (!res.ok) throw new Error(await extractError(res, 'Erro ao aprovar'));
 }
 
 export function setAuth(user: string, pass: string) {

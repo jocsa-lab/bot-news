@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ContentDoc } from '../lib/api';
-import { fetchContents, deleteContent as apiDelete, generateContent, approveContent, clearAuth } from '../lib/api';
+import { fetchContents, deleteContent as apiDelete, generateContent, approveContent, clearAuth, type GenerateResult } from '../lib/api';
 import ContentCard from './ContentCard';
 import StatusBadge from './StatusBadge';
 import GenerateModal from './GenerateModal';
@@ -40,7 +40,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   function showToast(msg: string, error = false) {
     setToast({ msg, error });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), error ? 8000 : 3000);
   }
 
   async function handleDelete(id: string) {
@@ -58,9 +58,19 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
   async function handleGenerate(topic: string, range: string) {
     setGenerating(true);
     try {
-      const result = await generateContent(topic, range);
+      const result: GenerateResult = await generateContent(topic, range);
       setShowGenerate(false);
-      showToast(`Gerado! Fontes: ${result.sources}/3, Consolidados: ${result.consolidated}`);
+
+      const parts = [`Fontes: ${result.sources}/3, Consolidados: ${result.consolidated}`];
+      if (result.failures?.length) {
+        parts.push(...result.failures.map((f) => `${f.source}: ${f.error}`));
+      }
+      if (result.consolidationError) {
+        parts.push(`Consolidacao: ${result.consolidationError}`);
+      }
+
+      const hasWarnings = (result.failures?.length ?? 0) > 0 || !!result.consolidationError;
+      showToast(parts.join('\n'), hasWarnings);
       load();
     } catch (e: any) {
       if (e.message === 'unauthorized') { clearAuth(); onLogout(); return; }
@@ -177,11 +187,13 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-5 right-5 px-5 py-3 rounded-lg text-sm font-medium text-white shadow-lg transition-opacity z-50 ${
+          className={`fixed bottom-5 right-5 px-5 py-3 rounded-lg text-sm font-medium text-white shadow-lg transition-opacity z-50 max-w-md ${
             toast.error ? 'bg-red-600' : 'bg-green-600'
           }`}
         >
-          {toast.msg}
+          {toast.msg.split('\n').map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
         </div>
       )}
     </div>

@@ -102,17 +102,33 @@ async function handleGenerate(topic: string, range: TimeRange): Promise<{ status
     console.log(`[generate] topic="${topic}" range="${range}"`);
 
     const result = await generateFromAllSources(topic, range);
-    const successCount = [result.gemini, result.deepseek, result.claude].filter(
-      (r) => r.success,
-    ).length;
+
+    const sources = [result.gemini, result.deepseek, result.claude];
+    const successCount = sources.filter((r) => r.success).length;
+    const failures = sources
+      .filter((r) => !r.success)
+      .map((r) => ({ source: r.source, error: r.error ?? 'unknown' }));
 
     if (successCount === 0) {
       await notifyTelegramText('❌ <b>Geração falhou</b>: nenhuma fonte LLM respondeu.').catch(console.error);
-      return { status: 500, body: JSON.stringify({ error: 'All LLM sources failed' }) };
+      return {
+        status: 500,
+        body: JSON.stringify({
+          error: 'Nenhuma fonte LLM respondeu',
+          failures,
+        }),
+      };
     }
 
-    const consolidated = await consolidateContent();
-    console.log(`[generate] Consolidated ${consolidated} rows`);
+    let consolidated = 0;
+    let consolidationError: string | undefined;
+    try {
+      consolidated = await consolidateContent();
+      console.log(`[generate] Consolidated ${consolidated} rows`);
+    } catch (err) {
+      consolidationError = err instanceof Error ? err.message : String(err);
+      console.error('[generate] Consolidation failed:', consolidationError);
+    }
 
     await notifyTelegramText(
       `📰 <b>Conteúdo gerado!</b>\n🤖 Fontes: ${successCount}/3\n📝 Consolidados: ${consolidated}`,
@@ -120,7 +136,13 @@ async function handleGenerate(topic: string, range: TimeRange): Promise<{ status
 
     return {
       status: 200,
-      body: JSON.stringify({ success: true, sources: successCount, consolidated }),
+      body: JSON.stringify({
+        success: true,
+        sources: successCount,
+        consolidated,
+        ...(failures.length > 0 && { failures }),
+        ...(consolidationError && { consolidationError }),
+      }),
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -288,9 +310,10 @@ const server = http.createServer(async (req, res) => {
       onApproval(approveMatch[1]).catch(console.error);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to approve' }));
+      res.end(JSON.stringify({ error: msg }));
     }
     return;
   }
@@ -305,9 +328,11 @@ const server = http.createServer(async (req, res) => {
       const serialized = docs.map(d => ({ ...d, _id: d._id?.toHexString() }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(serialized));
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[api/contents] Error:', msg);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to fetch contents' }));
+      res.end(JSON.stringify({ error: msg }));
     }
     return;
   }
@@ -319,9 +344,10 @@ const server = http.createServer(async (req, res) => {
       await updateFinalStatus(deleteMatch[1], 'apagado');
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to delete' }));
+      res.end(JSON.stringify({ error: msg }));
     }
     return;
   }

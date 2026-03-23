@@ -38,6 +38,12 @@ async function callWithRetry(prompt: string, attempt = 1): Promise<Response> {
     }
 
     return res;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('[Claude] Timeout: sem resposta em 30s');
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`[Claude] Falha na conexao: ${msg}`);
   } finally {
     clearTimeout(timeout);
   }

@@ -7,8 +7,16 @@ let db: Db;
 
 async function getDb(): Promise<Db> {
   if (!db) {
-    client = new MongoClient(config.mongodbUri);
-    await client.connect();
+    client = new MongoClient(config.mongodbUri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
+    try {
+      await client.connect();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[MongoDB] Falha na conexao: ${msg}`);
+    }
     db = client.db('bot-news');
   }
   return db;
