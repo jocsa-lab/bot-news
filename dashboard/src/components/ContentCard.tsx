@@ -4,6 +4,7 @@ import StatusBadge from './StatusBadge';
 interface Props {
   doc: ContentDoc;
   onDelete: (id: string) => void;
+  onApprove: (id: string) => void;
 }
 
 function sourceOk(val: unknown): boolean {
@@ -25,9 +26,10 @@ function formatDate(iso: string): string {
     ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ContentCard({ doc, onDelete }: Props) {
+export default function ContentCard({ doc, onDelete, onApprove }: Props) {
   const titulo = getTitulo(doc);
   const canDelete = !['apagado', 'publicado'].includes(doc.status);
+  const canApprove = doc.status === 'consolidado';
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-colors">
@@ -75,14 +77,24 @@ export default function ContentCard({ doc, onDelete }: Props) {
       {/* Footer */}
       <div className="px-4 py-2.5 bg-slate-950/50 border-t border-slate-800 flex items-center justify-between">
         <span className="text-[11px] text-slate-600">{doc.date}</span>
-        {canDelete && (
-          <button
-            onClick={() => onDelete(doc._id)}
-            className="text-xs font-medium text-red-400 hover:text-red-300 bg-red-950/50 hover:bg-red-900/50 px-3 py-1 rounded-md transition-colors"
-          >
-            Apagar
-          </button>
-        )}
+        <div className="flex gap-2">
+          {canApprove && (
+            <button
+              onClick={() => onApprove(doc._id)}
+              className="text-xs font-medium text-green-400 hover:text-green-300 bg-green-950/50 hover:bg-green-900/50 px-3 py-1 rounded-md transition-colors"
+            >
+              Aprovar
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => onDelete(doc._id)}
+              className="text-xs font-medium text-red-400 hover:text-red-300 bg-red-950/50 hover:bg-red-900/50 px-3 py-1 rounded-md transition-colors"
+            >
+              Apagar
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

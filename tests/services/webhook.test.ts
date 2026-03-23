@@ -10,6 +10,8 @@ vi.mock('../../src/utils/config', () => ({
     metaAppId: 'app-id',
     metaAppSecret: 'app-secret',
   },
+  isTelegramConfigured: () => true,
+  isInstagramConfigured: () => true,
 }));
 
 vi.mock('../../src/clients/mongodb', () => ({

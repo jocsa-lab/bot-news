@@ -5,6 +5,7 @@ vi.mock('../../src/utils/config', () => ({
     telegramBotToken: 'test-bot-token',
     telegramChatId: '123456',
   },
+  isTelegramConfigured: () => true,
 }));
 
 const fetchMock = vi.fn();

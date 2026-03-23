@@ -1,20 +1,19 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { config } from './utils/config';
+import { config, isInstagramConfigured, isTelegramConfigured } from './utils/config';
 import { TelegramCallbackData, ConsolidationResult } from './types';
 import { getRowById, updateFinalStatus, getRecentContents } from './clients/mongodb';
 import { notifyTelegramText } from './services/notification.service';
-import { generatePostImage, generateCarouselImages } from './services/image.service';
-import { publishToInstagram, publishCarousel, refreshMetaToken } from './services/instagram.service';
+import { generateCarouselImages } from './services/image.service';
 import { generateFromAllSources } from './services/generation.service';
 import { consolidateContent } from './services/consolidation.service';
 import { checkAuth, sendUnauthorized } from './middleware/auth';
 import { checkRateLimit, sendRateLimited } from './middleware/rate-limit';
+import type { TimeRange } from './prompts/prompt-01-geracao';
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
-// Resolve dashboard static files directory
 const DASHBOARD_DIR = path.resolve(__dirname, '..', 'dashboard', 'dist');
 
 const MIME_TYPES: Record<string, string> = {
@@ -30,9 +29,7 @@ const MIME_TYPES: Record<string, string> = {
 function serveStatic(res: http.ServerResponse, filePath: string): boolean {
   try {
     const resolved = path.resolve(DASHBOARD_DIR, filePath);
-    if (!resolved.startsWith(DASHBOARD_DIR)) {
-      return false; // path traversal protection
-    }
+    if (!resolved.startsWith(DASHBOARD_DIR)) return false;
     if (!fs.existsSync(resolved)) return false;
     const ext = path.extname(resolved);
     const mime = MIME_TYPES[ext] || 'application/octet-stream';
@@ -45,7 +42,7 @@ function serveStatic(res: http.ServerResponse, filePath: string): boolean {
   }
 }
 
-// --- Orchestrator: post-approval flow ---
+// --- Orchestrator: post-approval flow (Instagram optional) ---
 
 export async function onApproval(contentId: string): Promise<void> {
   try {
@@ -55,6 +52,14 @@ export async function onApproval(contentId: string): Promise<void> {
     }
 
     const consolidated: ConsolidationResult = JSON.parse(doc.consolidatedJson);
+
+    if (!isInstagramConfigured()) {
+      await updateFinalStatus(contentId, 'publicado');
+      console.log(`[approval] Content ${contentId} marked as published (Instagram not configured)`);
+      return;
+    }
+
+    const { publishToInstagram, publishCarousel } = await import('./services/instagram.service');
 
     const images = await generateCarouselImages({
       titulo: consolidated.titulo_post,
@@ -80,38 +85,29 @@ export async function onApproval(contentId: string): Promise<void> {
     }
 
     await updateFinalStatus(contentId, 'publicado', postId);
-
-    await notifyTelegramText(
-      `✅ <b>Publicado com sucesso!</b>\n📱 Post ID: ${postId}`,
-    );
+    await notifyTelegramText(`✅ <b>Publicado com sucesso!</b>\n📱 Post ID: ${postId}`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`onApproval failed for ${contentId}:`, msg);
-
     await updateFinalStatus(contentId, 'erro_publicacao').catch(console.error);
-
-    await notifyTelegramText(
-      `❌ <b>Erro ao publicar</b>\n🐛 ${msg}`,
-    ).catch(console.error);
-
+    await notifyTelegramText(`❌ <b>Erro ao publicar</b>\n🐛 ${msg}`).catch(console.error);
     throw error;
   }
 }
 
-// --- Content generation pipeline (called by Cloud Scheduler) ---
+// --- Generate content (cron or dashboard) ---
 
-async function handleGenerate(): Promise<{ status: number; body: string }> {
+async function handleGenerate(topic: string, range: TimeRange): Promise<{ status: number; body: string }> {
   try {
-    const topic = 'tecnologia e inovação';
-    console.log(`[generate] Starting generation for topic: ${topic}`);
+    console.log(`[generate] topic="${topic}" range="${range}"`);
 
-    const result = await generateFromAllSources(topic);
+    const result = await generateFromAllSources(topic, range);
     const successCount = [result.gemini, result.deepseek, result.claude].filter(
       (r) => r.success,
     ).length;
 
     if (successCount === 0) {
-      await notifyTelegramText('❌ <b>Geração falhou</b>: nenhuma fonte LLM respondeu.');
+      await notifyTelegramText('❌ <b>Geração falhou</b>: nenhuma fonte LLM respondeu.').catch(console.error);
       return { status: 500, body: JSON.stringify({ error: 'All LLM sources failed' }) };
     }
 
@@ -119,8 +115,8 @@ async function handleGenerate(): Promise<{ status: number; body: string }> {
     console.log(`[generate] Consolidated ${consolidated} rows`);
 
     await notifyTelegramText(
-      `📰 <b>Conteúdo gerado!</b>\n🤖 Fontes: ${successCount}/3\n📝 Consolidados: ${consolidated}\nAguardando aprovação no Telegram.`,
-    );
+      `📰 <b>Conteúdo gerado!</b>\n🤖 Fontes: ${successCount}/3\n📝 Consolidados: ${consolidated}`,
+    ).catch(console.error);
 
     return {
       status: 200,
@@ -134,19 +130,21 @@ async function handleGenerate(): Promise<{ status: number; body: string }> {
   }
 }
 
-// --- Meta token refresh (called by Cloud Scheduler monthly) ---
+// --- Meta token refresh ---
 
 async function handleRefreshToken(): Promise<{ status: number; body: string }> {
+  if (!isInstagramConfigured()) {
+    return { status: 200, body: JSON.stringify({ skipped: true, reason: 'Instagram not configured' }) };
+  }
   try {
+    const { refreshMetaToken } = await import('./services/instagram.service');
     console.log('[refresh-token] Refreshing Meta access token...');
-    const newToken = await refreshMetaToken();
+    await refreshMetaToken();
     console.log('[refresh-token] Token refreshed successfully');
-    await notifyTelegramText('🔑 <b>Meta token renovado</b> com sucesso.').catch(console.error);
     return { status: 200, body: JSON.stringify({ success: true }) };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('[refresh-token] Failed:', msg);
-    await notifyTelegramText(`❌ <b>Erro ao renovar token Meta</b>\n🐛 ${msg}`).catch(console.error);
     return { status: 500, body: JSON.stringify({ error: msg }) };
   }
 }
@@ -163,23 +161,20 @@ function parseBody(req: http.IncomingMessage): Promise<string> {
 }
 
 async function handleTelegramWebhook(body: string): Promise<{ status: number; body: string }> {
+  if (!isTelegramConfigured()) {
+    return { status: 200, body: 'ok' };
+  }
   try {
     const update = JSON.parse(body);
-
-    if (!update.callback_query) {
-      return { status: 200, body: 'ok' };
-    }
+    if (!update.callback_query) return { status: 200, body: 'ok' };
 
     const callbackData: TelegramCallbackData = JSON.parse(update.callback_query.data);
 
-    await fetch(
-      `https://api.telegram.org/bot${config.telegramBotToken}/answerCallbackQuery`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callback_query_id: update.callback_query.id }),
-      },
-    );
+    await fetch(`https://api.telegram.org/bot${config.telegramBotToken}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: update.callback_query.id }),
+    });
 
     if (callbackData.action === 'approve') {
       await updateFinalStatus(callbackData.contentId, 'pronto');
@@ -197,27 +192,28 @@ async function handleTelegramWebhook(body: string): Promise<{ status: number; bo
   }
 }
 
+const VALID_RANGES = new Set(['hoje', 'semana', 'mes']);
+
 const server = http.createServer(async (req, res) => {
   const rawUrl = req.url ?? '';
   const method = req.method ?? '';
 
-  // Rate limiting on all requests
   if (!checkRateLimit(req)) {
     sendRateLimited(res);
     return;
   }
 
-  // --- Public routes (no auth) ---
+  // --- Public routes ---
 
-  // POST /generate — triggered by Cloud Scheduler
+  // POST /generate — cron trigger (default topic)
   if (method === 'POST' && rawUrl === '/generate') {
-    const result = await handleGenerate();
+    const result = await handleGenerate('tecnologia e inovação', 'hoje');
     res.writeHead(result.status, { 'Content-Type': 'application/json' });
     res.end(result.body);
     return;
   }
 
-  // POST /refresh-token — triggered by Cloud Scheduler monthly
+  // POST /refresh-token
   if (method === 'POST' && rawUrl === '/refresh-token') {
     const result = await handleRefreshToken();
     res.writeHead(result.status, { 'Content-Type': 'application/json' });
@@ -225,7 +221,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /webhook/telegram — Telegram bot callbacks
+  // POST /webhook/telegram
   if (method === 'POST' && rawUrl === '/webhook/telegram') {
     const body = await parseBody(req);
     const result = await handleTelegramWebhook(body);
@@ -234,16 +230,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // GET /health — health check
+  // GET /health
   if (method === 'GET' && rawUrl === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
     return;
   }
 
-  // --- Protected routes (auth required) ---
+  // --- Protected routes ---
 
-  // Dashboard and API routes require auth
   if (rawUrl.startsWith('/dashboard') || rawUrl.startsWith('/api/') || rawUrl === '/') {
     if (!checkAuth(req)) {
       sendUnauthorized(res);
@@ -251,26 +246,57 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // GET / — redirect to dashboard
+  // GET / → dashboard
   if (method === 'GET' && rawUrl === '/') {
     res.writeHead(302, { Location: '/dashboard/' });
     res.end();
     return;
   }
 
-  // GET /dashboard/* — serve React SPA
+  // GET /dashboard/*
   if (method === 'GET' && rawUrl.startsWith('/dashboard')) {
     const filePath = rawUrl.replace('/dashboard', '').replace(/^\//, '') || 'index.html';
     if (serveStatic(res, filePath)) return;
-    // SPA fallback: serve index.html for client-side routing
     if (serveStatic(res, 'index.html')) return;
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Dashboard not found');
     return;
   }
 
-  // GET /api/contents — list recent contents
-  if (method === 'GET' && rawUrl.startsWith('/api/contents') && !rawUrl.includes('/delete')) {
+  // POST /api/generate — dashboard-triggered generation
+  if (method === 'POST' && rawUrl === '/api/generate') {
+    try {
+      const body = JSON.parse(await parseBody(req));
+      const topic = (body.topic || 'tecnologia e inovação').trim();
+      const range: TimeRange = VALID_RANGES.has(body.range) ? body.range : 'hoje';
+      const result = await handleGenerate(topic, range);
+      res.writeHead(result.status, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  // POST /api/contents/:id/approve — dashboard approve
+  const approveMatch = rawUrl.match(/^\/api\/contents\/([a-f0-9]{24})\/approve$/);
+  if (method === 'POST' && approveMatch) {
+    try {
+      await updateFinalStatus(approveMatch[1], 'pronto');
+      onApproval(approveMatch[1]).catch(console.error);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to approve' }));
+    }
+    return;
+  }
+
+  // GET /api/contents
+  if (method === 'GET' && rawUrl.startsWith('/api/contents') && !rawUrl.includes('/delete') && !rawUrl.includes('/approve')) {
     try {
       const parsed = new URL(rawUrl, 'http://localhost');
       const limit = parseInt(parsed.searchParams.get('limit') || '50', 10);
@@ -286,7 +312,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // PATCH /api/contents/:id/delete — soft-delete
+  // PATCH /api/contents/:id/delete
   const deleteMatch = rawUrl.match(/^\/api\/contents\/([a-f0-9]{24})\/delete$/);
   if (method === 'PATCH' && deleteMatch) {
     try {

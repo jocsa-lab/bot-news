@@ -1,6 +1,8 @@
-import { config } from '../utils/config';
+import { config, isTelegramConfigured } from '../utils/config';
 
-const TELEGRAM_API = `https://api.telegram.org/bot${config.telegramBotToken}`;
+function getTelegramApi(): string {
+  return `https://api.telegram.org/bot${config.telegramBotToken}`;
+}
 
 export async function notifyTelegram(data: {
   topic: string;
@@ -9,6 +11,11 @@ export async function notifyTelegram(data: {
   contentId: string;
   contradictions: boolean;
 }): Promise<void> {
+  if (!isTelegramConfigured()) {
+    console.log('[telegram] Skipped (not configured)');
+    return;
+  }
+
   const message = [
     '📋 <b>Novo conteúdo gerado</b>',
     `📌 Tema: ${escapeHtml(data.topic)}`,
@@ -28,7 +35,7 @@ export async function notifyTelegram(data: {
     ],
   };
 
-  const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
+  const res = await fetch(`${getTelegramApi()}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -46,7 +53,12 @@ export async function notifyTelegram(data: {
 }
 
 export async function notifyTelegramText(text: string): Promise<void> {
-  const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
+  if (!isTelegramConfigured()) {
+    console.log('[telegram] Skipped (not configured)');
+    return;
+  }
+
+  const res = await fetch(`${getTelegramApi()}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

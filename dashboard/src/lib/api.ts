@@ -36,6 +36,29 @@ export async function deleteContent(id: string): Promise<void> {
   if (!res.ok) throw new Error('Erro ao apagar');
 }
 
+export async function generateContent(topic: string, range: string): Promise<{ success: boolean; sources: number; consolidated: number }> {
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, range }),
+  });
+  if (res.status === 401) throw new Error('unauthorized');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+    throw new Error(data.error || 'Erro ao gerar conteudo');
+  }
+  return res.json();
+}
+
+export async function approveContent(id: string): Promise<void> {
+  const res = await fetch(`/api/contents/${id}/approve`, {
+    method: 'POST',
+    headers: headers(),
+  });
+  if (res.status === 401) throw new Error('unauthorized');
+  if (!res.ok) throw new Error('Erro ao aprovar');
+}
+
 export function setAuth(user: string, pass: string) {
   sessionStorage.setItem('auth_token', btoa(`${user}:${pass}`));
 }

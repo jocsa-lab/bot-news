@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ContentDoc } from '../lib/api';
-import { fetchContents, deleteContent as apiDelete, clearAuth } from '../lib/api';
+import { fetchContents, deleteContent as apiDelete, generateContent, approveContent, clearAuth } from '../lib/api';
 import ContentCard from './ContentCard';
 import StatusBadge from './StatusBadge';
+import GenerateModal from './GenerateModal';
 
 const ALL_STATUSES = ['gerado', 'consolidado', 'pronto', 'publicado', 'rejeitado', 'apagado', 'erro_publicacao'];
 
@@ -12,6 +13,8 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; error?: boolean } | null>(null);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -52,6 +55,32 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function handleGenerate(topic: string, range: string) {
+    setGenerating(true);
+    try {
+      const result = await generateContent(topic, range);
+      setShowGenerate(false);
+      showToast(`Gerado! Fontes: ${result.sources}/3, Consolidados: ${result.consolidated}`);
+      load();
+    } catch (e: any) {
+      if (e.message === 'unauthorized') { clearAuth(); onLogout(); return; }
+      showToast(e.message || 'Erro ao gerar', true);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleApprove(id: string) {
+    try {
+      await approveContent(id);
+      showToast('Conteudo aprovado');
+      load();
+    } catch (e: any) {
+      if (e.message === 'unauthorized') { clearAuth(); onLogout(); return; }
+      showToast('Erro ao aprovar', true);
+    }
+  }
+
   function handleLogout() {
     clearAuth();
     onLogout();
@@ -80,6 +109,9 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             />
             Mostrar apagados
           </label>
+          <button onClick={() => setShowGenerate(true)} className="bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors">
+            + Gerar Noticia
+          </button>
           <button onClick={load} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors">
             Atualizar
           </button>
@@ -127,11 +159,20 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((doc) => (
-              <ContentCard key={doc._id} doc={doc} onDelete={handleDelete} />
+              <ContentCard key={doc._id} doc={doc} onDelete={handleDelete} onApprove={handleApprove} />
             ))}
           </div>
         )}
       </div>
+
+      {/* Generate Modal */}
+      {showGenerate && (
+        <GenerateModal
+          onClose={() => setShowGenerate(false)}
+          onGenerate={handleGenerate}
+          loading={generating}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

@@ -19,18 +19,18 @@ export const config = {
   // MongoDB
   mongodbUri: required('MONGODB_URI'),
 
-  // Meta / Instagram
-  metaAppId: required('META_APP_ID'),
-  metaAppSecret: required('META_APP_SECRET'),
-  metaAccessToken: required('META_ACCESS_TOKEN'),
-  instagramAccountId: required('INSTAGRAM_ACCOUNT_ID'),
+  // Meta / Instagram (optional plugin)
+  metaAppId: optional('META_APP_ID', ''),
+  metaAppSecret: optional('META_APP_SECRET', ''),
+  metaAccessToken: optional('META_ACCESS_TOKEN', ''),
+  instagramAccountId: optional('INSTAGRAM_ACCOUNT_ID', ''),
 
-  // Telegram
-  telegramBotToken: required('TELEGRAM_BOT_TOKEN'),
-  telegramChatId: required('TELEGRAM_CHAT_ID'),
+  // Telegram (optional)
+  telegramBotToken: optional('TELEGRAM_BOT_TOKEN', ''),
+  telegramChatId: optional('TELEGRAM_CHAT_ID', ''),
 
   // GCP
-  gcpProjectId: required('GCP_PROJECT_ID'),
+  gcpProjectId: optional('GCP_PROJECT_ID', ''),
   gcpRegion: optional('GCP_REGION', 'southamerica-east1'),
 
   // Dashboard auth
@@ -42,3 +42,11 @@ export const config = {
   morningSchedule: optional('MORNING_SCHEDULE', '0 8 * * *'),
   eveningSchedule: optional('EVENING_SCHEDULE', '0 18 * * *'),
 } as const;
+
+export function isInstagramConfigured(): boolean {
+  return !!(config.metaAppId && config.metaAppSecret && config.metaAccessToken && config.instagramAccountId);
+}
+
+export function isTelegramConfigured(): boolean {
+  return !!(config.telegramBotToken && config.telegramChatId);
+}

@@ -2,7 +2,7 @@ import * as geminiClient from '../clients/gemini';
 import * as deepseekClient from '../clients/deepseek';
 import * as claudeClient from '../clients/claude';
 import { appendGenerationRow } from '../clients/mongodb';
-import { buildGenerationPrompt } from '../prompts/prompt-01-geracao';
+import { buildGenerationPrompt, TimeRange } from '../prompts/prompt-01-geracao';
 import { GenerationResult, LLMResponse, SourceResult } from '../types';
 
 function parseResult(
@@ -19,9 +19,12 @@ function parseResult(
   };
 }
 
-export async function generateFromAllSources(topic: string): Promise<GenerationResult> {
+export async function generateFromAllSources(
+  topic: string,
+  range: TimeRange = 'hoje',
+): Promise<GenerationResult> {
   const date = new Date().toISOString().split('T')[0];
-  const prompt = buildGenerationPrompt(topic, date);
+  const prompt = buildGenerationPrompt(topic, date, range);
 
   const [geminiSettled, deepseekSettled, claudeSettled] = await Promise.allSettled([
     geminiClient.generate(prompt),
@@ -41,7 +44,7 @@ export async function generateFromAllSources(topic: string): Promise<GenerationR
   ).length;
 
   if (successCount === 0) {
-    console.error('[generation] All 3 sources failed — skipping DB, notifying Telegram');
+    console.error('[generation] All 3 sources failed — skipping DB');
     return result;
   }
 

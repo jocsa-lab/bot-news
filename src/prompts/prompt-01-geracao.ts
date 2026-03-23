@@ -1,15 +1,27 @@
-export function buildGenerationPrompt(topic: string, date: string): string {
+export type TimeRange = 'hoje' | 'semana' | 'mes';
+
+const RANGE_INSTRUCTIONS: Record<TimeRange, string> = {
+  hoje: 'Foque nos acontecimentos e discussões mais relevantes de HOJE.',
+  semana: 'Faça um RESUMO SEMANAL dos acontecimentos mais importantes dos últimos 7 dias. Priorize tendências e eventos de maior impacto.',
+  mes: 'Faça um RESUMO MENSAL dos acontecimentos mais relevantes do último mês. Foque em grandes tendências, lançamentos marcantes e mudanças de mercado.',
+};
+
+export function buildGenerationPrompt(topic: string, date: string, range: TimeRange = 'hoje'): string {
   return `
 Você é um curador de conteúdo especializado em tecnologia e inovação.
 
 ## Tarefa
-Gere um resumo informativo e preciso sobre o tema abaixo, focado nos acontecimentos e discussões mais relevantes de hoje.
+Gere um resumo informativo e preciso sobre o tema abaixo.
+${RANGE_INSTRUCTIONS[range]}
 
 ## Tema
 ${topic}
 
 ## Data de referência
 ${date}
+
+## Período
+${range === 'hoje' ? 'Hoje' : range === 'semana' ? 'Última semana' : 'Último mês'}
 
 ## Regras
 1. Foque em FATOS verificáveis. Se não tiver certeza, omita.
